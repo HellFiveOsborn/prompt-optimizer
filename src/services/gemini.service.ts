@@ -6,7 +6,7 @@ import { GoogleGenAI, Type } from '@google/genai';
   providedIn: 'root',
 })
 export class GeminiService {
-  private keyFromEnv = (process as any).env.API_KEY;
+  private keyFromEnv: string | undefined = undefined;
 
   isKeyFromEnv(): boolean {
     return !!this.keyFromEnv;
