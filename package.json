@@ -1,29 +1,21 @@
 {
   "name": "ai-prompt-optimizer",
-  "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "ng serve",
-    "build": "ng build",
-    "preview": "ng serve --configuration=production"
+    "build": "esbuild index.tsx --bundle --outfile=dist/index.js --format=esm --platform=browser --sourcemap"
   },
   "dependencies": {
-    "rxjs": "^7.8.2",
+    "@angular/common": "^20.3.6",
+    "@angular/compiler": "^20.3.6",
+    "@angular/core": "^20.3.6",
+    "@angular/platform-browser": "^20.3.6",
     "@google/genai": "^1.25.0",
-    "@angular/compiler": "^20.3.0",
-    "@angular/common": "^20.3.0",
-    "@angular/core": "^20.3.0",
-    "@angular/platform-browser": "^20.3.0",
     "openai": "^4.53.2",
-    "@angular/build": "^20.3.0",
-    "@angular/cli": "^20.3.0",
-    "@angular/compiler-cli": "^20.3.0",
-    "tailwindcss": "latest"
+    "rxjs": "^7.8.2"
   },
   "devDependencies": {
-    "@types/node": "^22.14.0",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "esbuild": "^0.21.4",
+    "typescript": "^5.4.5"
   }
 }

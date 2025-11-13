@@ -58,7 +58,53 @@ type TempSettings = {
   standalone: true,
   imports: [CommonModule],
   templateUrl: './app.component.html',
-  styleUrls: ['./app.component.css'],
+  styles: [`
+    /* We need this to style the innerHTML provided by the Gemini API for the diff view */
+    :host ::ng-deep del {
+      text-decoration: line-through;
+      text-decoration-color: #fca5a5; /* red-300 */
+      background-color: rgba(220, 38, 38, 0.15); /* red-600 with opacity */
+      color: #f87171; /* red-400 */
+      padding: 2px 0;
+    }
+
+    :host ::ng-deep ins {
+      text-decoration: none;
+      background-color: rgba(22, 163, 74, 0.15); /* green-600 with opacity */
+      color: #4ade80; /* green-400 */
+      padding: 2px 0;
+    }
+
+    .shimmer-text {
+      background: linear-gradient(to right, #a0a0a0 20%, #fafafa 40%, #fafafa 60%, #a0a0a0 80%);
+      background-size: 200% auto;
+      
+      background-clip: text;
+      /* Animate the shimmer */
+      animation: shimmer-text-animation 2.5s linear infinite;
+      
+      /* Fallback for browsers that don't support text clipping */
+      color: #ccc; 
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .gradient-shimmer-icon {
+      background: linear-gradient(to right, #7dd3fc 20%, #f0abfc 40%, #f0abfc 60%, #7dd3fc 80%); /* sky-300 to fuchsia-300 */
+      background-size: 200% auto;
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: shimmer-text-animation 2.5s linear infinite;
+    }
+
+
+    @keyframes shimmer-text-animation {
+      to {
+        background-position: -200% center;
+      }
+    }
+  `],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class AppComponent {
