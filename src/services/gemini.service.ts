@@ -1,12 +1,12 @@
 import { Injectable } from '@angular/core';
-import { GoogleGenAI, GenerateContentResponse, Type } from '@google/genai';
-import { SYSTEM_INSTRUCTION } from './system-prompt';
+// Fix: Use GoogleGenAI and only import necessary types.
+import { GoogleGenAI, Type } from '@google/genai';
 
 @Injectable({
   providedIn: 'root',
 })
 export class GeminiService {
-  private keyFromEnv = process.env.API_KEY;
+  private keyFromEnv = (process as any).env.API_KEY;
 
   isKeyFromEnv(): boolean {
     return !!this.keyFromEnv;
@@ -16,14 +16,25 @@ export class GeminiService {
     return this.keyFromEnv;
   }
 
-  async optimizePrompt(originalPrompt: string, currentPrompt: string, changeRequest: string, outputPreference: 'TEXT' | 'JSON', targetModel: string, promptObjective: string, apiKey: string, model: string, onContentStart: () => void): Promise<string> {
+  async optimizePrompt(
+    originalPrompt: string,
+    currentPrompt: string,
+    changeRequest: string,
+    outputPreference: 'TEXT' | 'JSON',
+    targetModel: string,
+    promptObjective: string,
+    apiKey: string,
+    model: string,
+    onContentStart: () => void,
+    systemInstruction: string
+  ): Promise<string> {
     if (!apiKey) {
       throw new Error('Gemini API key is missing.');
     }
+    // Fix: Instantiate GoogleGenAI with a named apiKey parameter.
+    const ai = new GoogleGenAI({ apiKey });
 
-    try {
-      const ai = new GoogleGenAI({ apiKey });
-      const userRequest = `
+    const userRequest = `
       Here is the information for the prompt optimization task:
 
       - **Original Prompt (for context):**
@@ -33,7 +44,9 @@ export class GeminiService {
         "${currentPrompt}"
       
       - **User's Change Request (optional, prioritize this):**
-        "${changeRequest || 'No specific changes requested. Apply general best practices.'}"
+        "${
+          changeRequest || 'No specific changes requested. Apply general best practices.'
+        }"
 
       - **Desired Output Format for the final AI task (this is a constraint for your optimized prompt, NOT for your response format):**
         "${outputPreference}"
@@ -45,12 +58,13 @@ export class GeminiService {
         "${promptObjective}"
       `;
 
-      const responseStream = await ai.models.generateContentStream({
-        model,
+    try {
+      // Fix: Use the new ai.models.generateContentStream API.
+      const result = await ai.models.generateContentStream({
+        model: model,
         contents: userRequest,
         config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          temperature: 0.5,
+          systemInstruction: systemInstruction,
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -63,27 +77,36 @@ export class GeminiService {
                   type: Type.OBJECT,
                   properties: {
                     reasoning: { type: Type.STRING },
-                  }
+                  },
+                  required: ['reasoning']
                 }
               }
-            }
-          }
+            },
+            required: ['optimizedPrompt', 'fullPromptDiffHtml', 'changes']
+          },
+          temperature: 0.5,
+          maxOutputTokens: 8192,
         }
       });
       
       let fullResponse = '';
       let contentHasStarted = false;
-      for await (const chunk of responseStream) {
-        fullResponse += chunk.text;
-        if (!contentHasStarted && fullResponse.includes('"optimizedPrompt"')) {
+      // Fix: The result is the stream, and chunk.text is a property.
+      for await (const chunk of result) {
+        const chunkText = chunk.text;
+        if (!contentHasStarted && chunkText) {
           contentHasStarted = true;
           onContentStart();
         }
+        fullResponse += chunkText;
       }
       return fullResponse.trim();
     } catch (error) {
       console.error('Error calling Gemini API:', error);
-      throw new Error('Failed to generate content from Gemini API.');
+      if (error instanceof Error) {
+        throw new Error(`Failed to generate content from Gemini API: ${error.message}`);
+      }
+      throw new Error('An unknown error occurred while calling the Gemini API.');
     }
   }
 }

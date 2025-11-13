@@ -2,6 +2,8 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } 
 import { CommonModule } from '@angular/common';
 import { GeminiService } from './services/gemini.service';
 import { OpenaiService } from './services/openai.service';
+import { SYSTEM_INSTRUCTION } from './services/system-prompt';
+import { SYSTEM_INSTRUCTION_VISUAL } from './services/system-prompt-visual';
 
 interface Change {
   reasoning: string;
@@ -79,6 +81,10 @@ export class AppComponent {
   isThinking = signal(false);
   thinkingTime = signal(0);
   
+  // UI State Signals
+  isSidebarCollapsed = signal(false);
+  searchTerm = signal('');
+
   // History Signals
   history = signal<HistoryItem[]>([]);
   activeHistoryIndex = signal<number | null>(null);
@@ -121,6 +127,24 @@ export class AppComponent {
     'Finalizing improvements...'
   ];
 
+  private allModels = [
+    { value: 'universal', name: 'Any' },
+    { value: 'gpt', name: 'GPT (Family)' },
+    { value: 'claude', name: 'Claude (Family)' },
+    { value: 'gemini', name: 'Gemini (Family)' },
+    { value: 'deepseek', name: 'DeepSeek (Family)' },
+    { value: 'qwen', name: 'Qwen (Family)' },
+    { value: 'gpt-image-1', name: 'GPT-Image-1 (4o)' },
+    { value: 'gemini-flash', name: 'Gemini Flash (Nano Banana)' },
+    { value: 'midjourney', name: 'Midjourney' },
+    { value: 'stable-diffusion', name: 'Stable Diffusion' },
+    { value: 'flux', name: 'FLUX' },
+    { value: 'veo', name: 'Veo (Family)' },
+    { value: 'sora', name: 'Sora (Family)' },
+    { value: 'kling', name: 'Kling (Family)' },
+    { value: 'wan', name: 'Wan (Family)' },
+  ];
+
   constructor() {
     this.isGeminiKeyFromEnv.set(this.geminiService.isKeyFromEnv());
     const savedSettings = localStorage.getItem('optimizer_settings');
@@ -155,12 +179,32 @@ export class AppComponent {
       }
     }
 
+    const savedHistory = localStorage.getItem('optimizer_history');
+    if (savedHistory) {
+      const parsedHistory = JSON.parse(savedHistory, (key, value) => {
+        if (key === 'timestamp' && typeof value === 'string') {
+          return new Date(value);
+        }
+        return value;
+      });
+      this.history.set(parsedHistory);
+    }
+
     if (this.isGeminiKeyFromEnv()) {
       this.settings.update(s => ({
         ...s,
         gemini: { ...s.gemini, apiKey: this.geminiService.getEnvKey()! }
       }));
     }
+
+    // Auto-save history to localStorage whenever it changes.
+    effect(() => {
+        if (this.history().length > 0) {
+            localStorage.setItem('optimizer_history', JSON.stringify(this.history()));
+        } else {
+            localStorage.removeItem('optimizer_history');
+        }
+    });
 
     effect(() => {
       if (this.isLoading()) {
@@ -192,20 +236,66 @@ export class AppComponent {
       groups.get(item.originalPrompt)!.push(item);
     }
     
-    // Convert map to array for the template
-    return Array.from(groups.entries()).map(([originalPrompt, items]) => ({
-      originalPrompt,
-      items
-    }));
+    const term = this.searchTerm().toLowerCase().trim();
+    if (!term) {
+      return Array.from(groups.entries()).map(([originalPrompt, items]) => ({
+        originalPrompt,
+        items
+      }));
+    }
+
+    const filteredGroups: GroupedHistoryItem[] = [];
+    for (const [originalPrompt, items] of groups.entries()) {
+        const isGroupTitleMatch = originalPrompt.toLowerCase().includes(term);
+        
+        if (isGroupTitleMatch) {
+            filteredGroups.push({ originalPrompt, items });
+            continue;
+        }
+
+        const matchingItems = items.filter(item => 
+            item.optimizedPrompt.toLowerCase().includes(term) ||
+            (item.changeRequest && item.changeRequest.toLowerCase().includes(term))
+        );
+
+        if (matchingItems.length > 0) {
+            filteredGroups.push({
+                originalPrompt,
+                items: matchingItems
+            });
+        }
+    }
+    return filteredGroups;
   });
 
   availableModels = computed(() => {
+    const objective = this.promptObjective();
+    if (objective === 'image') {
+      return [
+        { value: 'universal', name: 'Any' },
+        { value: 'gpt-image-1', name: 'GPT-Image-1 (4o)' },
+        { value: 'gemini-flash', name: 'Gemini Flash (Nano Banana)' },
+        { value: 'midjourney', name: 'Midjourney' },
+        { value: 'stable-diffusion', name: 'Stable Diffusion' },
+        { value: 'flux', name: 'FLUX' },
+      ];
+    }
+    if (objective === 'video') {
+      return [
+        { value: 'universal', name: 'Any' },
+        { value: 'veo', name: 'Veo (Family)' },
+        { value: 'sora', name: 'Sora (Family)' },
+        { value: 'kling', name: 'Kling (Family)' },
+        { value: 'wan', name: 'Wan (Family)' },
+      ];
+    }
     return [
       { value: 'universal', name: 'Any' },
       { value: 'gpt', name: 'GPT (Family)' },
       { value: 'claude', name: 'Claude (Family)' },
       { value: 'gemini', name: 'Gemini (Family)' },
-      { value: 'deepseek', name: 'DeepSeek (Family)' }
+      { value: 'deepseek', name: 'DeepSeek (Family)' },
+      { value: 'qwen', name: 'Qwen (Family)' }
     ];
   });
 
@@ -215,12 +305,14 @@ export class AppComponent {
       { value: 'coding', name: 'Coding' },
       { value: 'technical', name: 'Technical' },
       { value: 'writing', name: 'Writing' },
-      { value: 'instructional', name: 'Instructional' }
+      { value: 'instructional', name: 'Instructional' },
+      { value: 'image', name: 'Image' },
+      { value: 'video', name: 'Video' },
     ];
   });
 
   getModelName(value: string): string {
-    return this.availableModels().find(m => m.value === value)?.name ?? value;
+    return this.allModels.find(m => m.value === value)?.name ?? value;
   }
   
   getObjectiveName(value: string): string {
@@ -236,6 +328,10 @@ export class AppComponent {
     const target = event.target as HTMLTextAreaElement;
     this.changeRequest.set(target.value);
   }
+
+  onSearchTermInput(event: Event): void {
+    this.searchTerm.set((event.target as HTMLInputElement).value);
+  }
   
   onModelChange(event: Event): void {
     const target = event.target as HTMLSelectElement;
@@ -245,10 +341,15 @@ export class AppComponent {
   onObjectiveChange(event: Event): void {
     const target = event.target as HTMLSelectElement;
     this.promptObjective.set(target.value);
+    this.targetModel.set('universal');
   }
 
   toggleChanges(): void {
     this.showChanges.set(!this.showChanges());
+  }
+  
+  toggleSidebar(): void {
+    this.isSidebarCollapsed.update(v => !v);
   }
 
   private calculateWordDiff(html: string): { additions: number; deletions: number } {
@@ -295,6 +396,10 @@ export class AppComponent {
       const currentPrompt = this.userPrompt();
       const originalPromptForApi = isIterating ? currentPrompt : this.originalPrompt();
       const currentSettings = this.settings();
+      const objective = this.promptObjective();
+      const systemInstruction = (objective === 'image' || objective === 'video')
+        ? SYSTEM_INSTRUCTION_VISUAL
+        : SYSTEM_INSTRUCTION;
       
       let resultString: string;
       const onContentStart = () => {
@@ -318,7 +423,8 @@ export class AppComponent {
           currentSettings.openai.apiKey,
           currentSettings.openai.endpoint,
           currentSettings.openai.executionModel,
-          onContentStart
+          onContentStart,
+          systemInstruction
         );
       } else {
         const { apiKey, model } = currentSettings.gemini;
@@ -337,11 +443,36 @@ export class AppComponent {
           this.promptObjective(),
           apiKey,
           model,
-          onContentStart
+          onContentStart,
+          systemInstruction
         );
       }
       
-      const result: Partial<OptimizedPromptResponse> = JSON.parse(resultString);
+      let result: Partial<OptimizedPromptResponse>;
+      try {
+        // The model might return the JSON wrapped in markdown like ```json ... ``` or with other text.
+        // We will extract the main JSON object from the string.
+        let jsonString = resultString.trim();
+        const jsonMatch = jsonString.match(/```(json)?\s*(\{[\s\S]*\})\s*```/);
+
+        if (jsonMatch && jsonMatch[2]) {
+          jsonString = jsonMatch[2];
+        } else {
+            // Fallback for raw JSON that might have leading/trailing text
+            const jsonStart = jsonString.indexOf('{');
+            const jsonEnd = jsonString.lastIndexOf('}');
+            if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+                jsonString = jsonString.substring(jsonStart, jsonEnd + 1);
+            }
+        }
+        
+        result = JSON.parse(jsonString);
+      } catch (parseError) {
+        console.error('Failed to parse JSON response from model:', parseError);
+        console.error('Original response string:', resultString);
+        // Rethrow with a more user-friendly message
+        throw new Error('The model returned data in an unexpected format. Please check the console for details and try again.');
+      }
 
       const safeChanges = result.changes || [];
       const safeOptimizedPrompt = result.optimizedPrompt || currentPrompt;
@@ -366,8 +497,8 @@ export class AppComponent {
       this.viewHistoryItem(0);
       this.changeRequest.set('');
 
-    } catch (e) {
-      this.error.set('An error occurred while optimizing the prompt. The model may have returned an invalid format. Please try again.');
+    } catch (e: any) {
+      this.error.set(e.message || 'An error occurred while optimizing the prompt. The model may have returned an invalid format. Please try again.');
       console.error(e);
     } finally {
       this.isLoading.set(false);
@@ -399,6 +530,26 @@ export class AppComponent {
 
     if (flatIndex > -1) {
       this.viewHistoryItem(flatIndex);
+    }
+  }
+
+  startNewOptimizationFrom(originalPrompt: string): void {
+    const latestItemInGroup = this.history().find(item => item.originalPrompt === originalPrompt);
+
+    this.activeHistoryIndex.set(null);
+    this.userPrompt.set(originalPrompt);
+    this.originalPrompt.set(originalPrompt);
+    this.optimizedPrompt.set('');
+    this.changeRequest.set('');
+    this.error.set(null);
+    this.isLoading.set(false);
+
+    if (latestItemInGroup) {
+      this.targetModel.set(latestItemInGroup.targetModel);
+      this.promptObjective.set(latestItemInGroup.promptObjective);
+    } else {
+      this.targetModel.set('universal');
+      this.promptObjective.set('general');
     }
   }
 

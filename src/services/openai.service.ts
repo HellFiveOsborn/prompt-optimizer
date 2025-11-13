@@ -1,11 +1,25 @@
 import { Injectable } from '@angular/core';
 import OpenAI from 'openai';
-import { SYSTEM_INSTRUCTION } from './system-prompt';
 
 @Injectable({
   providedIn: 'root',
 })
 export class OpenaiService {
+
+  private isConnectionError(error: any): boolean {
+    if (error && typeof error.message === 'string') {
+        const message = error.message.toLowerCase();
+        // openai-node SDK connection error name
+        if (error.name === 'APIConnectionError') {
+            return true;
+        }
+        // Browser fetch errors due to CORS, network issues, or from the user's provided error log
+        if (message.includes('failed to fetch') || message.includes('connection error')) {
+            return true;
+        }
+    }
+    return false;
+  }
 
   async listModels(apiKey: string, baseUrl: string): Promise<string[]> {
     try {
@@ -14,6 +28,9 @@ export class OpenaiService {
       return response.data.map(model => model.id).sort();
     } catch (error) {
       console.error('Error fetching models from OpenAI-compatible API:', error);
+      if (this.isConnectionError(error)) {
+        throw new Error('Connection failed. This is likely a CORS issue. Please ensure your endpoint server is configured to allow requests from this origin.');
+      }
       throw new Error('Failed to fetch models. Check endpoint and API key.');
     }
   }
@@ -28,7 +45,8 @@ export class OpenaiService {
     apiKey: string, 
     baseUrl: string,
     executionModel: string,
-    onContentStart: () => void
+    onContentStart: () => void,
+    systemInstruction: string
   ): Promise<string> {
     const openai = new OpenAI({ apiKey, baseURL: baseUrl, dangerouslyAllowBrowser: true });
 
@@ -58,12 +76,13 @@ export class OpenaiService {
       const stream = await openai.chat.completions.create({
         model: executionModel,
         messages: [
-          { role: 'system', content: SYSTEM_INSTRUCTION },
+          { role: 'system', content: systemInstruction },
           { role: 'user', content: userRequest },
         ],
         temperature: 0.5,
         response_format: { type: 'json_object' },
         stream: true,
+        max_tokens: 4096
       });
 
       let fullResponse = '';
@@ -78,6 +97,9 @@ export class OpenaiService {
       return fullResponse.trim();
     } catch (error) {
       console.error('Error calling OpenAI-compatible API:', error);
+      if (this.isConnectionError(error)) {
+        throw new Error('Connection failed. This is likely a CORS issue. Please ensure your endpoint server is configured to allow requests from this origin.');
+      }
       throw new Error('Failed to generate content from OpenAI-compatible API.');
     }
   }
