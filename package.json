@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "build": "esbuild index.tsx --bundle --outfile=dist/index.js --format=esm --platform=browser --sourcemap"
+    "build": "esbuild index.tsx --bundle --outfile=dist/index.js --format=esm --platform=browser --sourcemap && cp index.html dist/index.html"
   },
   "dependencies": {
     "@angular/common": "^20.3.6",
