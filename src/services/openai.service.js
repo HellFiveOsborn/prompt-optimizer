@@ -1,27 +1,24 @@
-import { Injectable } from '@angular/core';
+// OpenAI Service - Converted to JavaScript for React
 import OpenAI from 'openai';
 
-@Injectable({
-  providedIn: 'root',
-})
 export class OpenaiService {
 
-  private isConnectionError(error: any): boolean {
+  isConnectionError(error) {
     if (error && typeof error.message === 'string') {
-        const message = error.message.toLowerCase();
-        // openai-node SDK connection error name
-        if (error.name === 'APIConnectionError') {
-            return true;
-        }
-        // Browser fetch errors due to CORS, network issues, or from the user's provided error log
-        if (message.includes('failed to fetch') || message.includes('connection error')) {
-            return true;
-        }
+      const message = error.message.toLowerCase();
+      // openai-node SDK connection error name
+      if (error.name === 'APIConnectionError') {
+        return true;
+      }
+      // Browser fetch errors due to CORS, network issues, or from the user's provided error log
+      if (message.includes('failed to fetch') || message.includes('connection error')) {
+        return true;
+      }
     }
     return false;
   }
 
-  async listModels(apiKey: string, baseUrl: string): Promise<string[]> {
+  async listModels(apiKey, baseUrl) {
     try {
       const openai = new OpenAI({ apiKey, baseURL: baseUrl, dangerouslyAllowBrowser: true });
       const response = await openai.models.list();
@@ -36,18 +33,18 @@ export class OpenaiService {
   }
 
   async optimizePrompt(
-    originalPrompt: string, 
-    currentPrompt: string, 
-    changeRequest: string, 
-    outputPreference: 'TEXT' | 'JSON', 
-    targetModel: string, 
-    promptObjective: string,
-    apiKey: string, 
-    baseUrl: string,
-    executionModel: string,
-    onContentStart: () => void,
-    systemInstruction: string
-  ): Promise<string> {
+    originalPrompt,
+    currentPrompt,
+    changeRequest,
+    outputPreference,
+    targetModel,
+    promptObjective,
+    apiKey,
+    baseUrl,
+    executionModel,
+    onContentStart,
+    systemInstruction
+  ) {
     const openai = new OpenAI({ apiKey, baseURL: baseUrl, dangerouslyAllowBrowser: true });
 
     const userRequest = `
@@ -71,7 +68,7 @@ export class OpenaiService {
       - **Prompt Objective (guides the optimization style):**
         "${promptObjective}"
       `;
-    
+
     try {
       const stream = await openai.chat.completions.create({
         model: executionModel,

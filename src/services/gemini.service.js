@@ -1,37 +1,36 @@
-import { Injectable } from '@angular/core';
-// Fix: Use GoogleGenAI and only import necessary types.
+// Gemini Service - Converted to JavaScript for React
 import { GoogleGenAI, Type } from '@google/genai';
 
-@Injectable({
-  providedIn: 'root',
-})
 export class GeminiService {
-  private keyFromEnv: string | undefined = undefined;
+  constructor() {
+    this.keyFromEnv = undefined;
+  }
 
-  isKeyFromEnv(): boolean {
+  isKeyFromEnv() {
     return !!this.keyFromEnv;
   }
 
-  getEnvKey(): string | undefined {
+  getEnvKey() {
     return this.keyFromEnv;
   }
 
   async optimizePrompt(
-    originalPrompt: string,
-    currentPrompt: string,
-    changeRequest: string,
-    outputPreference: 'TEXT' | 'JSON',
-    targetModel: string,
-    promptObjective: string,
-    apiKey: string,
-    model: string,
-    onContentStart: () => void,
-    systemInstruction: string
-  ): Promise<string> {
+    originalPrompt,
+    currentPrompt,
+    changeRequest,
+    outputPreference,
+    targetModel,
+    promptObjective,
+    apiKey,
+    model,
+    onContentStart,
+    systemInstruction
+  ) {
     if (!apiKey) {
       throw new Error('Gemini API key is missing.');
     }
-    // Fix: Instantiate GoogleGenAI with a named apiKey parameter.
+
+    // Instantiate GoogleGenAI with a named apiKey parameter
     const ai = new GoogleGenAI({ apiKey });
 
     const userRequest = `
@@ -44,9 +43,8 @@ export class GeminiService {
         "${currentPrompt}"
       
       - **User's Change Request (optional, prioritize this):**
-        "${
-          changeRequest || 'No specific changes requested. Apply general best practices.'
-        }"
+        "${changeRequest || 'No specific changes requested. Apply general best practices.'
+      }"
 
       - **Desired Output Format for the final AI task (this is a constraint for your optimized prompt, NOT for your response format):**
         "${outputPreference}"
@@ -59,7 +57,7 @@ export class GeminiService {
       `;
 
     try {
-      // Fix: Use the new ai.models.generateContentStream API.
+      // Use the ai.models.generateContentStream API
       const result = await ai.models.generateContentStream({
         model: model,
         contents: userRequest,
@@ -88,10 +86,11 @@ export class GeminiService {
           maxOutputTokens: 8192,
         }
       });
-      
+
       let fullResponse = '';
       let contentHasStarted = false;
-      // Fix: The result is the stream, and chunk.text is a property.
+
+      // The result is the stream, and chunk.text is a property
       for await (const chunk of result) {
         const chunkText = chunk.text;
         if (!contentHasStarted && chunkText) {
