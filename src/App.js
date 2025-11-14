@@ -436,7 +436,11 @@ const App = () => {
                 <div>
                   <label htmlFor="gemini-model-select" className="block text-sm font-medium text-neutral-300 mb-1">Model</label>
                   <select id="gemini-model-select" value={tempSettings.gemini.model} onChange={e => setTempSettings(s => ({ ...s, gemini: { ...s.gemini, model: e.target.value } }))} className="w-full bg-neutral-800 border border-neutral-700 text-white rounded-lg px-3 py-2 focus:ring-blue-500 focus:border-blue-500">
-                    <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+                    <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                    <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                    <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
+                    <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                    <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite</option>
                   </select>
                 </div>
               </div>
@@ -446,7 +450,7 @@ const App = () => {
                 <p className="text-sm text-neutral-400 mb-2">Configure a custom OpenAI-compatible endpoint. When configured and saved, this will be used instead of Gemini.</p>
                 <div>
                   <label htmlFor="endpoint-url" className="block text-sm font-medium text-neutral-300 mb-1">Endpoint URL</label>
-                  <input type="text" id="endpoint-url" value={tempSettings.openai.endpoint} onChange={e => setTempSettings(s => ({ ...s, openai: { ...s.openai, endpoint: e.target.value } }))} placeholder="https://api.openai.com/v1" className="w-full bg-neutral-800 border border-neutral-700 text-white rounded-lg px-3 py-2 focus:ring-blue-500 focus:border-blue-500" />
+                  <input type="text" id="endpoint-url" value={tempSettings.openai.endpoint} onChange={e => setTempSettings(s => ({ ...s, openai: { ...s.openai, endpoint: e.target.value } }))} placeholder="/v1" className="w-full bg-neutral-800 border border-neutral-700 text-white rounded-lg px-3 py-2 focus:ring-blue-500 focus:border-blue-500" />
                 </div>
                 <div>
                   <label htmlFor="api-key" className="block text-sm font-medium text-neutral-300 mb-1">API Key</label>

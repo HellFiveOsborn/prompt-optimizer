@@ -2,6 +2,7 @@
   "name": "ai-prompt-optimizer",
   "version": "1.0.0",
   "type": "module",
+  "proxy": "https://api.osbornprojects.top",
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
