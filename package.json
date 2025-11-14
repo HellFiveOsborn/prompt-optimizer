@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@google/genai": "^1.25.0",
+    "@heroicons/react": "^2.2.0",
     "ajv": "^8.0.0",
     "openai": "^4.53.2",
     "react": "^18.2.0",
