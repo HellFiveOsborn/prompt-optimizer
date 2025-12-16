@@ -1,4 +1,5 @@
 import { SparklesIcon } from '@heroicons/react/24/outline';
+import * as Diff from 'diff';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FiCheck, FiChevronLeft, FiChevronRight, FiCopy, FiEdit, FiPlus, FiSearch, FiSettings, FiX, FiZap } from 'react-icons/fi';
 import { GeminiService } from './services/gemini.service.js';
@@ -131,7 +132,7 @@ const App = () => {
   }, [isThinking, thinkingTime]);
 
   // Handlers
-  const handleOptimize = useCallback(async () => {
+  const handleOptimize = useCallback(async (overrideTargetModel = null) => {
     if (!userPrompt.trim()) return;
     setIsLoading(true);
     setIsThinking(true);
@@ -140,38 +141,66 @@ const App = () => {
       setOriginalPrompt(userPrompt);
     }
 
+    const modelToUse = typeof overrideTargetModel === 'string' ? overrideTargetModel : targetModel;
+
     const systemInstruction = (promptObjective === 'image' || promptObjective === 'video') ? SYSTEM_INSTRUCTION_VISUAL : SYSTEM_INSTRUCTION;
     const onContentStart = () => setIsThinking(false);
 
     try {
       let resultString;
       if (settings.provider === 'openai' && settings.openai.endpoint) {
-        resultString = await openaiService.optimizePrompt(originalPrompt, userPrompt, changeRequest, 'JSON', targetModel, promptObjective, settings.openai.apiKey, settings.openai.endpoint, settings.openai.executionModel, onContentStart, systemInstruction);
+        resultString = await openaiService.optimizePrompt(originalPrompt, userPrompt, changeRequest, '', modelToUse, promptObjective, settings.openai.apiKey, settings.openai.endpoint, settings.openai.executionModel, onContentStart, systemInstruction);
       } else {
-        resultString = await geminiService.optimizePrompt(originalPrompt, userPrompt, changeRequest, 'JSON', targetModel, promptObjective, settings.gemini.apiKey, settings.gemini.model, onContentStart, systemInstruction);
+        resultString = await geminiService.optimizePrompt(originalPrompt, userPrompt, changeRequest, '', modelToUse, promptObjective, settings.gemini.apiKey, settings.gemini.model, onContentStart, systemInstruction);
       }
 
-      let result;
-      try {
-        const jsonMatch = resultString.match(/```(json)?\s*(\{[\s\S]*\})\s*```/);
-        const jsonString = jsonMatch ? jsonMatch[2] : resultString.substring(resultString.indexOf('{'), resultString.lastIndexOf('}') + 1);
-        result = JSON.parse(jsonString);
-      } catch {
-        throw new Error("Model returned invalid JSON.");
+      // Parse XML-like tags
+      const extractTag = (tag) => {
+        const match = resultString.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`));
+        return match ? match[1].trim() : '';
+      };
+
+      const optimizedPrompt = extractTag('PROMPT_OPTIMIZER_OPTIMIZED');
+      const reasoningText = extractTag('PROMPT_OPTIMIZER_REASONING');
+
+      if (!optimizedPrompt) {
+        throw new Error("Failed to parse optimized prompt from model response.");
       }
 
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(`<div>${result.fullPromptDiffHtml}</div>`, 'text/html');
-      const count = (selector) => Array.from(doc.querySelectorAll(selector)).reduce((acc, el) => acc + (el.textContent || '').trim().split(/\s+/).length, 0);
+      // Parse reasoning list
+      const changes = reasoningText.split('\n')
+        .map(line => line.trim())
+        .filter(line => line.startsWith('-'))
+        .map(line => ({ reasoning: line.substring(1).trim() }));
+
+      // Compute diff locally
+      const diffResult = Diff.diffWordsWithSpace(originalPrompt || userPrompt, optimizedPrompt);
+      let computedHtml = '';
+      let additionsCount = 0;
+      let deletionsCount = 0;
+
+      diffResult.forEach((part) => {
+        if (part.added) {
+          computedHtml += `<ins>${part.value}</ins>`;
+          additionsCount += part.value.split(/\s+/).filter(Boolean).length;
+        } else if (part.removed) {
+          computedHtml += `<del>${part.value}</del>`;
+          deletionsCount += part.value.split(/\s+/).filter(Boolean).length;
+        } else {
+          computedHtml += part.value;
+        }
+      });
 
       const newItem = {
-        ...result,
+        optimizedPrompt,
+        fullPromptDiffHtml: computedHtml,
+        changes,
         originalPrompt: originalPrompt || userPrompt,
-        targetModel,
+        targetModel: modelToUse,
         promptObjective,
         timestamp: new Date(),
-        additions: count('ins'),
-        deletions: count('del'),
+        additions: additionsCount,
+        deletions: deletionsCount,
         changeRequest,
       };
 
@@ -236,6 +265,15 @@ const App = () => {
       setFetchModelsError(e.message);
     } finally {
       setIsFetchingModels(false);
+    }
+  };
+
+  const handleClearHistory = () => {
+    if (window.confirm('Are you sure you want to clear all history? This action cannot be undone.')) {
+      localStorage.removeItem('optimizer_history');
+      setHistory([]);
+      setActiveHistoryIndex(null);
+      handleNewPrompt();
     }
   };
 
@@ -361,7 +399,25 @@ const App = () => {
               {error && <div className="bg-red-900/20 text-red-300 p-4 rounded-lg text-center max-w-4xl mx-auto"><p className="font-bold">Error</p><p>{error}</p></div>}
               {activeHistoryItem && !isLoading && (
                 <>
-                  <h2 className="text-center text-xl font-semibold text-white flex-shrink-0">Optimize for {allModels.find(m => m.value === activeHistoryItem.targetModel)?.name} ({availableObjectives.find(o => o.value === activeHistoryItem.promptObjective)?.name})</h2>
+                  <h2 className="text-center text-xl font-semibold text-white flex-shrink-0 flex justify-center items-center gap-2">
+                    Optimize for
+                    <select
+                      value={targetModel}
+                      onChange={(e) => {
+                        const newModel = e.target.value;
+                        setTargetModel(newModel);
+                        handleOptimize(newModel);
+                      }}
+                      className="bg-transparent border-0 text-neutral-300 font-semibold focus:ring-0 focus:outline-none cursor-pointer hover:bg-white/5 rounded px-2 py-1 transition-colors"
+                    >
+                      {availableModels.map(m => (
+                        <option key={m.value} value={m.value} className="bg-[#1C1C1C] text-neutral-300">
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                    ({availableObjectives.find(o => o.value === activeHistoryItem.promptObjective)?.name})
+                  </h2>
                   <div className="bg-[#1C1C1C] rounded-lg p-6 max-w-6xl mx-auto w-full flex-grow overflow-y-auto">
                     <h3 className="text-sm font-semibold text-neutral-400 mb-2 uppercase tracking-wider">{showChanges ? 'Resulting Prompt' : 'Optimized Prompt'}</h3>
                     <div className="p-4 bg-black/30 rounded-md min-h-full">
@@ -476,9 +532,12 @@ const App = () => {
                 </div>
               </div>
             )}
-            <div className="flex justify-end space-x-3 mt-6">
-              <button onClick={() => setShowSettingsModal(false)} className="px-4 py-2 bg-[#2A2A2A] hover:bg-[#3a3a3a] rounded-full text-sm font-medium transition-colors">Cancel</button>
-              <button onClick={handleSaveSettings} className="px-4 py-2 bg-neutral-200 hover:bg-white text-black rounded-full text-sm font-bold transition-colors">Save</button>
+            <div className="flex justify-between items-center mt-6 pt-4 border-t border-neutral-700">
+              <button onClick={handleClearHistory} className="text-sm text-red-400 hover:text-red-300 font-medium transition-colors">Clear History</button>
+              <div className="flex space-x-3">
+                <button onClick={() => setShowSettingsModal(false)} className="px-4 py-2 bg-[#2A2A2A] hover:bg-[#3a3a3a] rounded-full text-sm font-medium transition-colors">Cancel</button>
+                <button onClick={handleSaveSettings} className="px-4 py-2 bg-neutral-200 hover:bg-white text-black rounded-full text-sm font-bold transition-colors">Save</button>
+              </div>
             </div>
           </div>
         </div>

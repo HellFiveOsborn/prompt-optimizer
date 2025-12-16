@@ -1,12 +1,13 @@
 // OpenAI Service - Converted to JavaScript for React
-import OpenAI from 'openai';
+import { createOpenAI } from '@ai-sdk/openai';
+import { streamText } from 'ai';
 
 export class OpenaiService {
 
   isConnectionError(error) {
     if (error && typeof error.message === 'string') {
       const message = error.message.toLowerCase();
-      // openai-node SDK connection error name
+      // openai-node SDK connection error name (legacy check)
       if (error.name === 'APIConnectionError') {
         return true;
       }
@@ -20,9 +21,48 @@ export class OpenaiService {
 
   async listModels(apiKey, baseUrl) {
     try {
-      const openai = new OpenAI({ apiKey, baseURL: baseUrl, dangerouslyAllowBrowser: true });
-      const response = await openai.models.list();
-      return response.data.map(model => model.id).sort();
+      let url;
+      const headers = {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      };
+
+      // In development, use local proxy to bypass CORS
+      if (process.env.NODE_ENV === 'development') {
+        url = '/api/proxy/models';
+        headers['x-target-url'] = baseUrl;
+      } else {
+        // In production, use direct URL (server must support CORS)
+        url = baseUrl.endsWith('/') ? `${baseUrl}models` : `${baseUrl}/models`;
+      }
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers
+      });
+
+      // Check if we got HTML back (SPA fallback), which means proxy failed or 404
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('text/html')) {
+        throw new Error('Endpoint returned HTML instead of JSON. Check your configuration.');
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || `HTTP Error ${response.status}`);
+      }
+
+      const data = await response.json();
+      // Verify data structure matches OpenAI format { data: [{id: ...}, ...] }
+      if (!data.data || !Array.isArray(data.data)) {
+        // Some proxy providers might return the array directly
+        if (Array.isArray(data)) {
+          return data.map(model => model.id).sort();
+        }
+        throw new Error('Invalid response format from models endpoint');
+      }
+
+      return data.data.map(model => model.id).sort();
     } catch (error) {
       console.error('Error fetching models from OpenAI-compatible API:', error);
       if (this.isConnectionError(error)) {
@@ -45,48 +85,68 @@ export class OpenaiService {
     onContentStart,
     systemInstruction
   ) {
-    const openai = new OpenAI({ apiKey, baseURL: baseUrl, dangerouslyAllowBrowser: true });
+    // Configure OpenAI provider based on environment
+    const openaiConfig = {
+      apiKey,
+      // Vercel AI SDK handles browser compatibility automatically
+    };
 
-    const userRequest = `
-      Here is the information for the prompt optimization task:
+    if (process.env.NODE_ENV === 'development') {
+      // Use local proxy in development
+      openaiConfig.baseURL = '/api/proxy';
+      openaiConfig.headers = {
+        'x-target-url': baseUrl
+      };
+    } else {
+      // Use direct URL in production
+      openaiConfig.baseURL = baseUrl;
+    }
 
-      - **Original Prompt (for context):**
-        "${originalPrompt}"
-
-      - **Current Prompt (to be improved and used for diff):**
-        "${currentPrompt}"
-      
-      - **User's Change Request (optional, prioritize this):**
-        "${changeRequest || 'No specific changes requested. Apply general best practices.'}"
-
-      - **Desired Output Format for the final AI task (this is a constraint for your optimized prompt, NOT for your response format):**
-        "${outputPreference}"
-
-      - **Target Model (for prompt optimization):**
-        "${targetModel}"
-      
-      - **Prompt Objective (guides the optimization style):**
-        "${promptObjective}"
-      `;
+    const openai = createOpenAI(openaiConfig);
 
     try {
-      const stream = await openai.chat.completions.create({
-        model: executionModel,
+      const userRequest = `
+      <PROMPT_OPTIMIZER_INPUT>
+      ${currentPrompt}
+      </PROMPT_OPTIMIZER_INPUT>
+
+      <PROMPT_OPTIMIZER_CONTEXT_ORIGINAL>
+      ${originalPrompt}
+      </PROMPT_OPTIMIZER_CONTEXT_ORIGINAL>
+
+      <PROMPT_OPTIMIZER_REQ_CHANGES>
+      ${changeRequest || 'No specific changes requested. Apply general best practices.'}
+      </PROMPT_OPTIMIZER_REQ_CHANGES>
+
+      <PROMPT_OPTIMIZER_TARGET_MODEL>
+      ${targetModel}
+      </PROMPT_OPTIMIZER_TARGET_MODEL>
+
+      <PROMPT_OPTIMIZER_OBJECTIVE>
+      ${promptObjective}
+      </PROMPT_OPTIMIZER_OBJECTIVE>
+
+      <PROMPT_OPTIMIZER_OUTPUT_FORMAT>
+      ${outputPreference}
+      </PROMPT_OPTIMIZER_OUTPUT_FORMAT>
+      `;
+
+      const result = await streamText({
+        model: openai(executionModel),
         messages: [
           { role: 'system', content: systemInstruction },
           { role: 'user', content: userRequest },
         ],
         temperature: 0.5,
-        response_format: { type: 'json_object' },
-        stream: true,
-        max_tokens: 4096
+        maxTokens: 4096,
       });
 
       let fullResponse = '';
       let contentHasStarted = false;
-      for await (const chunk of stream) {
-        fullResponse += chunk.choices[0]?.delta?.content || '';
-        if (!contentHasStarted && fullResponse.includes('"optimizedPrompt"')) {
+
+      for await (const chunk of result.textStream) {
+        fullResponse += chunk;
+        if (!contentHasStarted && fullResponse.includes('<PROMPT_OPTIMIZER_')) {
           contentHasStarted = true;
           onContentStart();
         }

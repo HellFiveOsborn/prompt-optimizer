@@ -1,5 +1,5 @@
 // Gemini Service - Converted to JavaScript for React
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 
 export class GeminiService {
   constructor() {
@@ -34,26 +34,29 @@ export class GeminiService {
     const ai = new GoogleGenAI({ apiKey });
 
     const userRequest = `
-      Here is the information for the prompt optimization task:
+      <PROMPT_OPTIMIZER_INPUT>
+      ${currentPrompt}
+      </PROMPT_OPTIMIZER_INPUT>
 
-      - **Original Prompt (for context):**
-        "${originalPrompt}"
+      <PROMPT_OPTIMIZER_CONTEXT_ORIGINAL>
+      ${originalPrompt}
+      </PROMPT_OPTIMIZER_CONTEXT_ORIGINAL>
 
-      - **Current Prompt (to be improved and used for diff):**
-        "${currentPrompt}"
-      
-      - **User's Change Request (optional, prioritize this):**
-        "${changeRequest || 'No specific changes requested. Apply general best practices.'
-      }"
+      <PROMPT_OPTIMIZER_REQ_CHANGES>
+      ${changeRequest || 'No specific changes requested. Apply general best practices.'}
+      </PROMPT_OPTIMIZER_REQ_CHANGES>
 
-      - **Desired Output Format for the final AI task (this is a constraint for your optimized prompt, NOT for your response format):**
-        "${outputPreference}"
+      <PROMPT_OPTIMIZER_TARGET_MODEL>
+      ${targetModel}
+      </PROMPT_OPTIMIZER_TARGET_MODEL>
 
-      - **Target Model (for prompt optimization):**
-        "${targetModel}"
+      <PROMPT_OPTIMIZER_OBJECTIVE>
+      ${promptObjective}
+      </PROMPT_OPTIMIZER_OBJECTIVE>
 
-      - **Prompt Objective (guides the optimization style):**
-        "${promptObjective}"
+      <PROMPT_OPTIMIZER_OUTPUT_FORMAT>
+      ${outputPreference}
+      </PROMPT_OPTIMIZER_OUTPUT_FORMAT>
       `;
 
     try {
@@ -63,25 +66,6 @@ export class GeminiService {
         contents: userRequest,
         config: {
           systemInstruction: systemInstruction,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              optimizedPrompt: { type: Type.STRING },
-              fullPromptDiffHtml: { type: Type.STRING },
-              changes: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    reasoning: { type: Type.STRING },
-                  },
-                  required: ['reasoning']
-                }
-              }
-            },
-            required: ['optimizedPrompt', 'fullPromptDiffHtml', 'changes']
-          },
           temperature: 0.5,
           maxOutputTokens: 8192,
         }
@@ -93,11 +77,13 @@ export class GeminiService {
       // The result is the stream, and chunk.text is a property
       for await (const chunk of result) {
         const chunkText = chunk.text;
-        if (!contentHasStarted && chunkText) {
+        if (!contentHasStarted && (fullResponse + (chunkText || '')).includes('<PROMPT_OPTIMIZER_')) {
           contentHasStarted = true;
           onContentStart();
         }
-        fullResponse += chunkText;
+        if (chunkText) {
+          fullResponse += chunkText;
+        }
       }
       return fullResponse.trim();
     } catch (error) {
